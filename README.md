@@ -12,11 +12,17 @@ lives in your browser (localStorage) and never leaves your device.**
 
 ## Features
 
-- **Home** — total deposited, cost basis & fees (per currency), and a
-  card per position: net qty, average cost, total cost, fees.
+- **Home** — total deposited, cost basis & fees (per currency),
+  **Realized P/L (net of fees)** per currency, a card per position
+  (net qty, average cost, total cost, fees — plus the realized
+  gross → fees → net line for anything you've sold), and a **Charts**
+  section: an allocation donut per currency (open positions by cost)
+  and a monthly-deposits bar.
 - **Trades** — full history, sells shown as negative qty (red), tap to
-  edit or delete. If you buy and later sell it all, the position shows
-  as *closed* (bought/sold totals + fees, no open avg). Add new trades with a floating button.
+  edit or delete; each sell carries a chip with its realized P/L
+  (average-cost method). If you buy and later sell it all, the
+  position shows as *closed* (bought/sold totals + fees, no open avg).
+  Add new trades with a floating button.
 - **Deposits** — every funding of your account with running total.
 - **Settings** —
   - **Import from Excel**: reads your original `Investment.xlsx` layout
@@ -38,9 +44,8 @@ python -m http.server 8080        # then open http://localhost:8080
 # or: npx serve .
 ```
 
-You can also just double-click `index.html` (the first load needs the
-internet to fetch the Excel library from CDN; everything else works
-offline).
+You can also just double-click `index.html` — the libraries (Excel +
+charts) are self-hosted in `vendor/`, so it works fully offline.
 
 ## Deploy to GitHub Pages
 
@@ -80,21 +85,30 @@ book = {
   (treated as 0 in cost math, exactly like your Excel formulas).
 - **Averages mirror the workbook**: `Σ(qty×price) / Σ(qty)` per ticker;
   fees = `Σ fee`; deposits = `Σ amount` per currency.
+- **Realized P/L (average cost, fees included)**: each sell is matched
+  against the average cost *up to that moment* (Σ buy qty×price ÷
+  Σ buy qty). `net = gross − ALL fees of the ticker`; gross/fees/net
+  are shown consistently on Home, on position cards, and per sell row.
 - Stored under localStorage key `stockTracker.v1`.
 
 ## Math verification
 
-`npm test` runs two suites:
+`npm test` runs the suites in `test/`:
 
 - `test/calc.test.cjs` — the aggregation engine against a deterministic
   fixture book (merges of buys and sells, closed positions, null prices,
   multiple currencies).
+- `test/realized.test.cjs` — realized P/L: full round trips, partial
+  sells, uncovered sells, re-entry re-averaging, non-USD tickers,
+  and the monthly-deposit buckets.
 - `test/smoke.test.cjs` — renders the real app in jsdom and drives it:
   import → portfolio numbers → add trade → edit → delete → deposit →
   erase. If an actual `Investment.xlsx` sits in the project root, the
   suite imports it **through the app's own importer** and asserts the
   real numbers end-to-end (the file itself is git-ignored; the test
   skips that part when it's absent).
+- `test/real.data.test.cjs` (local-only, git-ignored) — asserts the
+  real workbook's numbers on-screen, including realized P/L.
 
 ```bash
 npm install        # once (dev deps for tests only)
@@ -108,10 +122,11 @@ index.html            app shell (tabs, PWA meta)
 manifest.webmanifest  installable-app metadata
 css/style.css         mobile-first styles
 js/seed.js            snapshot of Investment.xlsx (first-run data + reset)
-js/calc.js            pure aggregation (node-testable)
+js/calc.js            pure aggregation + realized P/L (node-testable)
 js/store.js           state + localStorage persistence
-js/xlsx.js            Excel import/export (SheetJS from CDN)
-js/ui.js              views, bottom sheets, events
+js/xlsx.js            Excel import/export (self-hosted SheetJS)
+js/ui.js              views, bottom sheets, events, charts
+vendor/               self-hosted libs: xlsx.full.min.js + chart.umd.js
 icons/                PWA icons (180/192/512)
 test/                 node test suite
 ```

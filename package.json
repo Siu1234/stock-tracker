@@ -8,6 +8,7 @@
     "test": "node test/run.cjs"
   },
   "devDependencies": {
+    "chart.js": "^4.6.1",
     "jsdom": "^24.1.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },

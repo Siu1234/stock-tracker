@@ -67,5 +67,77 @@
     return { deposits, positions, costByCurrency, feeByCurrency };
   }
 
-  return { summarize, num };
+  /** Realized P/L — average-cost method, one entry per currency.
+   *  avg cost at a sell = (Σ buy qty×price before it) / (Σ buy qty before it)
+   *  covered sells  → (sell price − that avg) × qty
+   *  uncovered sells (sold before/without a buy) → counted at face proceeds
+   *  net = gross − ALL fees of the ticker */
+  function realized(book) {
+    const order = new Map();
+    const groups = new Map();
+    for (const t of book.transactions || []) {
+      const cur = t.currency || "USD";
+      const key = t.ticker.toUpperCase() + "|" + cur;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+        order.set(key, { ticker: t.ticker.toUpperCase(), currency: cur, gross: 0, fees: 0, net: 0, soldQty: 0 });
+      }
+      groups.get(key).push(t);
+      order.get(key).fees += num(t.fee);
+    }
+
+    const sells = [];
+    for (const [key, list] of groups) {
+      const o = order.get(key);
+      // date order, stable for same-date (original entry order)
+      const seq = list
+        .map((t, i) => [String(t.date || ""), i, t])
+        .sort((a, b) => a[0].localeCompare(b[0]) || a[1] - b[1]);
+      let bought = 0;
+      let basis = 0;
+      for (const [, , t] of seq) {
+        const q = num(t.qty);
+        const p = num(t.price);
+        if (q >= 0) {
+          bought += q;
+          basis += q * p;
+        } else {
+          const sell = Math.abs(q);
+          const covered = Math.min(sell, bought);
+          const uncovered = sell - covered;
+          const avg = bought > 0 ? basis / bought : 0;
+          const gross = covered * (p - avg) + uncovered * p;
+          o.gross += gross;
+          o.soldQty += sell;
+          sells.push({ ticker: o.ticker, currency: o.currency, date: String(t.date || ""), qty: sell, gross });
+        }
+      }
+      o.net = o.gross - o.fees;
+    }
+
+    const byCurrency = {};
+    for (const o of order.values()) {
+      const c = (byCurrency[o.currency] = byCurrency[o.currency] || { gross: 0, fees: 0, net: 0 });
+      c.gross += o.gross;
+      c.fees += o.fees;
+      c.net += o.net;
+    }
+    return { byTicker: [...order.values()], sells, byCurrency };
+  }
+
+  // ---- monthly deposits for charts ----
+  function monthlyDeposits(book) {
+    const months = new Map(); // "YYYY-MM" -> {currency: amount}
+    for (const d of book.deposits || []) {
+      const m = String(d.date || "").slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(m)) continue; // skip empty / malformed dates
+      const cur = d.currency || "USD";
+      const e = months.get(m) || {};
+      e[cur] = (e[cur] || 0) + num(d.amount);
+      months.set(m, e);
+    }
+    return [...months.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }
+
+  return { summarize, realized, monthlyDeposits, num };
 });

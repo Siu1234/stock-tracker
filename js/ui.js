@@ -51,9 +51,147 @@
     return { s, hero, others, meta };
   }
 
+  /* ---------------- charts ---------------- */
+  const PALETTE = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444",
+    "#8b5cf6", "#ec4899", "#14b8a6", "#64748b", "#eab308"];
+  const liveCharts = {};
+
+  const centerTextPlugin = {
+    id: "centerText",
+    afterDraw(chart) {
+      const cfg = chart.options && chart.options.plugins && chart.options.plugins.centerText;
+      if (!cfg || !cfg.lines || !cfg.lines[0]) return;
+      const meta = chart.getDatasetMeta(0);
+      if (!meta || !meta.data.length) return;
+      const { x, y } = meta.data[0];
+      const { ctx } = chart;
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.font = "600 10px -apple-system, 'Segoe UI', Roboto, sans-serif";
+      ctx.fillStyle = "#64748b";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(cfg.lines[0].label, x, y - 3);
+      ctx.font = "700 15px -apple-system, 'Segoe UI', Roboto, sans-serif";
+      ctx.fillStyle = "#0f172a";
+      ctx.textBaseline = "top";
+      ctx.fillText(cfg.lines[0].value, x, y + 5);
+      ctx.restore();
+    },
+  };
+
+  function destroyCharts() {
+    for (const k of Object.keys(liveCharts)) {
+      try { liveCharts[k].destroy(); } catch (e) { /* noop */ }
+      delete liveCharts[k];
+    }
+  }
+
+  function bootCharts(openByCur) {
+    if (typeof Chart === "undefined") {
+      chartCardsUnavailable();
+      return;
+    }
+    destroyCharts();
+    Chart.defaults.font.family = "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+    Chart.defaults.color = "#64748b";
+
+    // allocation donuts, one per currency (open positions by cost)
+    for (const [cur, list] of Object.entries(openByCur || {})) {
+      const cv = document.getElementById("don-" + cur);
+      if (!cv) continue;
+      const total = list.reduce((n, p) => n + p.cost, 0);
+      const ch = makeChart(cv, {
+        type: "doughnut",
+        data: {
+          labels: list.map((p) => p.ticker),
+          datasets: [{
+            data: list.map((p) => Math.round(p.cost * 100) / 100),
+            backgroundColor: list.map((_, i) => PALETTE[i % PALETTE.length]),
+            borderColor: "#ffffff",
+            borderWidth: 2,
+            hoverOffset: 6,
+          }],
+        },
+        options: {
+          maintainAspectRatio: false,
+          cutout: "62%",
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 10, boxHeight: 10, padding: 10, font: { size: 11 } } },
+            centerText: { lines: [{ label: "open cost", value: money(Math.round(total * 100) / 100, cur) }] },
+            tooltip: {
+              callbacks: {
+                label: (c) => {
+                  const pct = total > 0 ? " (" + ((c.parsed / total) * 100).toFixed(1) + "%)" : "";
+                  return " " + c.label + ": " + money(c.parsed, cur) + pct;
+                },
+              },
+            },
+          },
+        },
+        plugins: [centerTextPlugin],
+      });
+      if (ch) liveCharts["don-" + cur] = ch;
+    }
+
+    // monthly deposits bar
+    const bar = document.getElementById("dep-bar");
+    if (bar) {
+      const months = ST.monthlyDeposits(store.state);
+      const labelOf = (ym) => {
+        const d = new Date(ym + "-15T12:00:00");
+        return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+      };
+      const curs = [];
+      for (const [, e] of months) for (const c of Object.keys(e)) if (!curs.includes(c)) curs.push(c);
+      const ch = makeChart(bar, {
+        type: "bar",
+        data: {
+          labels: months.map(([ym]) => labelOf(ym)),
+          datasets: curs.map((c, i) => ({
+            label: c,
+            data: months.map(([, e]) => Math.round((e[c] || 0) * 100) / 100),
+            backgroundColor: PALETTE[i % PALETTE.length],
+            borderRadius: 4,
+            maxBarThickness: 34,
+          })),
+        },
+        options: {
+          maintainAspectRatio: false,
+          scales: {
+            x: { stacked: true, grid: { display: false } },
+            y: { stacked: true, beginAtZero: true, ticks: { font: { size: 10 } }, grid: { color: "#eef2f7" } },
+          },
+          plugins: {
+            legend: { display: curs.length > 1, labels: { boxWidth: 10, boxHeight: 10, font: { size: 11 } } },
+            tooltip: { callbacks: { label: (c) => " " + c.dataset.label + ": " + money(c.parsed.y, c.dataset.label) } },
+          },
+        },
+      });
+      if (ch) liveCharts["dep-bar"] = ch;
+    }
+  }
+
+  function chartCardsUnavailable() {
+    document.querySelectorAll(".chart-card").forEach((c) => {
+      c.innerHTML = '<div class="chart-note">Charts unavailable — the chart library didn\'t load. Reload the page when you\'re connected.</div>';
+    });
+  }
+
+  // never let a canvas problem take the whole screen down
+  function makeChart(cv, cfg) {
+    try {
+      return new Chart(cv, cfg);
+    } catch (e) {
+      const card = cv && cv.closest ? cv.closest(".chart-card") : null;
+      if (card) chartCardsUnavailable();
+      return null;
+    }
+  }
+
   function renderPortfolio() {
     const { s, hero, others, meta } = depositKpis();
     const otherLines = others.map((d) => `${d.currency} ${money(d.total, d.currency)}`).join(" · ");
+    const R = ST.realized(store.state);
 
     let kpiRows = "";
     for (const d of s.deposits) {
@@ -68,6 +206,36 @@
       if (!v) continue;
       feeRows += `<div class="kpi"><span class="k">Fees paid</span><span class="v">${money(v, cur)}</span></div>`;
     }
+    let realRows = "";
+    for (const [cur, v] of Object.entries(R.byCurrency)) {
+      if (v.gross === 0 && v.fees === 0) continue;
+      const cls = v.net >= 0 ? "buy" : "sell";
+      realRows += `<div class="kpi"><span class="k">Realized P/L (net of fees)</span><span class="v ${cls}">${v.net >= 0 ? "+" : "−"}${money(Math.abs(v.net), cur)}</span></div>`;
+    }
+
+    /* ---- charts (allocation donuts + monthly deposits) ---- */
+    const openByCur = {};
+    for (const p of s.positions) if (!p.net && p.cost > 0) (openByCur[p.currency] = openByCur[p.currency] || []).push(p);
+    const hasOpen = Object.values(openByCur).length > 0;
+    const hasDep = store.state.deposits.length > 0;
+    let chartSection = "";
+    if (hasOpen || hasDep) {
+      let donuts = "";
+      for (const [cur, list] of Object.entries(openByCur)) {
+        const total = list.reduce((n, p) => n + p.cost, 0);
+        donuts += `
+          <div class="donut-cell">
+            <h4>${esc(cur)} · open cost</h4>
+            <div class="canvas-wrap sm"><canvas id="don-${esc(cur)}"></canvas></div>
+            <div class="donut-total">${money(total, cur)}</div>
+          </div>`;
+      }
+      chartSection = `
+        <div class="section-title">Charts</div>
+        ${hasOpen ? `<div class="chart-card"><div class="donut-row">${donuts}</div></div>` : ""}
+        ${hasDep ? `<div class="chart-card"><div class="chart-label">Monthly deposits</div><div class="canvas-wrap"><canvas id="dep-bar"></canvas></div></div>` : ""}
+      `;
+    }
 
     const groups = {};
     for (const p of s.positions) (groups[p.currency] = groups[p.currency] || []).push(p);
@@ -80,6 +248,13 @@
           ? `<span>bought ${qty(p.bought)} · sold ${qty(p.sold)}</span>`
           : `<span>avg ${money(p.avg, cur)}/unit</span>`;
         const costLine = p.net ? "" : `<span>cost ${money(p.cost, cur)}</span>`;
+        const r = R.byTicker.find((x) => x.ticker === p.ticker && x.currency === cur);
+        const realLine = r && r.soldQty > 0
+          ? `<div class="row-bottom realized-line">
+               <span>realized ${r.gross >= 0 ? "+" : "−"}${money(Math.abs(r.gross), cur)} · fees ${money(r.fees, cur)} → net
+               <b class="${r.net >= 0 ? "buy" : "sell"}">${r.net >= 0 ? "+" : "−"}${money(Math.abs(r.net), cur)}</b></span>
+             </div>`
+          : "";
         groupsHtml += `
         <div class="card">
           <div class="row-top">
@@ -89,13 +264,14 @@
           <div class="row-bottom">
             ${detail} ${costLine} ${p.fee ? `<span>fees ${money(p.fee, cur)}</span>` : ""}
           </div>
+          ${realLine}
         </div>`;
       }
     }
 
     $("#view").innerHTML = `
       <h1 class="screen-title">Portfolio</h1>
-      <p class="screen-sub">Costs and fees, per your records</p>
+      <p class="screen-sub">Costs, fees & realized, per your records</p>
 
       <div class="hero">
         <div class="label">Total deposited</div>
@@ -107,20 +283,33 @@
         ${kpiRows || `<div class="kpi"><span class="k">Deposits</span><span class="v muted">none yet</span></div>`}
         ${costRows}
         ${feeRows}
+        ${realRows}
       </div>
+
+      ${chartSection}
 
       ${groupsHtml || `<div class="empty" style="margin-top:14px"><span class="emoji">📊</span>No positions yet — add a transaction from the Transactions tab.</div>`}
     `;
+
+    if (chartSection) bootCharts(openByCur);
   }
 
   function renderTransactions() {
     const txs = store.state.transactions.slice()
       .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id)));
+    const R = ST.realized(store.state);
 
     let rows = "";
     for (const t of txs) {
       const side = t.qty >= 0 ? "buy" : "sell";
       const price = t.price === null || t.price === undefined ? "no price" : ` @ ${money(t.price, t.currency)}`;
+      const sale = t.qty < 0
+        ? R.sells.find((x) => x.ticker === String(t.ticker).toUpperCase() && x.currency === (t.currency || "USD")
+          && x.date === String(t.date) && x.qty === Math.abs(t.qty))
+        : null;
+      const realChip = sale
+        ? ` <span class="chip ${sale.gross >= 0 ? "green" : "red"}">${sale.gross >= 0 ? "+" : "−"}${money(Math.abs(sale.gross), t.currency)}</span>`
+        : "";
       rows += `
       <div class="card row-link" data-action="edit-tx" data-id="${t.id}">
         <div class="row-top">
@@ -129,7 +318,7 @@
         </div>
         <div class="row-bottom" style="margin-top:4px">
           <span class="${side}">${signQty(t.qty)} sh</span>
-          <span>${price}${t.fee ? ` · fee ${money(t.fee, t.currency)}` : ""}</span>
+          <span>${price}${t.fee ? ` · fee ${money(t.fee, t.currency)}` : ""}${realChip}</span>
         </div>
       </div>`;
     }

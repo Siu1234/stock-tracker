@@ -302,7 +302,59 @@ html, body {
 }
 .empty .emoji { font-size: 34px; display: block; margin-bottom: 10px; }
 
+/* ---------- charts ---------- */
+.chart-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 14px 16px;
+  margin-bottom: 10px;
+  text-align: center;
+}
+.chart-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.donut-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+.donut-cell { flex: 1 1 42%; min-width: 150px; max-width: 240px; }
+.donut-cell h4 {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: none;
+}
+.canvas-wrap { position: relative; height: 220px; }
+.canvas-wrap.sm { height: 186px; }
+.donut-total {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.chart-note {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 30px 10px;
+}
+
+/* ---------- realized line on position cards ---------- */
+.realized-line {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 13.5px;
+}
+
 /* ---------- desktop niceties ---------- */
 @media (min-width: 620px) {
   .field-row { flex-wrap: wrap; }
+  .donut-cell { max-width: 260px; }
 }
