@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+package-lock.json
+
+# personal data — never commit
+Investment.xlsx
+*.xlsx
+test/real.data.test.cjs
+
+# os / editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# local backups
+*.bak

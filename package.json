@@ -1,0 +1,17 @@
+{
+  "name": "stock-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mobile-first personal stock & deposit tracker. Static site — data stays in your browser.",
+  "scripts": {
+    "start": "npx --yes http-server -p 8080 -c-1 .",
+    "test": "node test/run.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
