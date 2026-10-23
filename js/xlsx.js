@@ -13,11 +13,46 @@
 (function () {
   "use strict";
 
-  const guard = () => {
-    if (typeof XLSX === "undefined") {
-      throw new Error("Excel library not loaded — check your internet connection and retry.");
+  const CDN_FALLBACKS = [
+    "https://cdn.jsdelivr.net/npm/xlsx@0.20.3/dist/xlsx.full.min.js",
+    "https://unpkg.com/xlsx@0.20.3/dist/xlsx.full.min.js",
+  ];
+  let loading = null;
+
+  function loadScript(src, timeoutMs = 15000) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      let done = false;
+      const finish = (fn) => { if (!done) { done = true; fn(); } };
+      s.src = src;
+      s.onload = () => finish(resolve);
+      s.onerror = () => finish(() => reject(new Error("failed: " + src)));
+      const t = setTimeout(() => finish(() => reject(new Error("timeout: " + src))), timeoutMs);
+      s.addEventListener("load", () => clearTimeout(t));
+      s.addEventListener("error", () => clearTimeout(t));
+      document.head.appendChild(s);
+    });
+  }
+
+  /** Make sure the Excel library is present (bundled first, CDNs as fallbacks). */
+  function ensureXLSX() {
+    if (typeof XLSX !== "undefined") return Promise.resolve(XLSX);
+    if (!loading) {
+      loading = (async () => {
+        const first = typeof document !== "undefined" ? "vendor/xlsx.full.min.js" : null;
+        const sources = first ? [first, ...CDN_FALLBACKS] : CDN_FALLBACKS;
+        let firstErr = null;
+        for (const src of sources) {
+          try {
+            await loadScript(src);
+            if (typeof XLSX !== "undefined") return XLSX;
+          } catch (e) { firstErr = firstErr || e; }
+        }
+        throw new Error("Couldn't load the Excel library (vendor file + CDN). Check your connection, then reload the page." + (firstErr ? ` (${firstErr.message})` : ""));
+      })().finally(() => { loading = null; });
     }
-  };
+    return loading;
+  }
 
   const toNum = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
   const isNum = (v) => typeof v === "number" && isFinite(v);
@@ -107,7 +142,7 @@
   }
 
   async function importFile(file) {
-    guard();
+    await ensureXLSX();
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: "array" });
     return parseWorkbook(wb);
@@ -115,8 +150,8 @@
 
   function round6(v) { return Math.round(v * 1e6) / 1e6; }
 
-  function exportWorkbook(book) {
-    guard();
+  async function exportWorkbook(book) {
+    await ensureXLSX();
     const s = (window.ST ? ST.summarize(book) : null);
     const wb = XLSX.utils.book_new();
     const today = new Date().toISOString().slice(0, 10);

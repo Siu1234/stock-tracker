@@ -398,7 +398,7 @@
   }
 
   /* ---------------- events ---------------- */
-  function onAction(ev) {
+  async function onAction(ev) {
     const el = ev.target.closest("[data-action]");
     if (!el) return;
     const a = el.dataset.action;
@@ -434,7 +434,7 @@
       case "import-xlsx": $("#file-xlsx").click(); break;
       case "import-json": $("#file-json").click(); break;
       case "export-xlsx":
-        try { xlsxio.exportWorkbook(store.state); toast("Excel file downloaded"); }
+        try { await xlsxio.exportWorkbook(store.state); toast("Excel file downloaded"); }
         catch (e) { toast(e.message || "Export failed"); }
         break;
       case "export-json": {

@@ -6,6 +6,7 @@ package-lock.json
 Investment.xlsx
 *.xlsx
 test/real.data.test.cjs
+test/xlsx-loader.test.cjs
 
 # os / editor
 .DS_Store

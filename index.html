@@ -42,7 +42,13 @@
   <input type="file" id="file-xlsx" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
   <input type="file" id="file-json" accept=".json,application/json" hidden>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.3/dist/xlsx.full.min.js"></script>
+  <script src="vendor/xlsx.full.min.js"></script>
+  <script>
+    // Fallback: if the bundled copy is missing (it shouldn't be), try the CDN.
+    if (typeof XLSX === "undefined") {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.3/dist/xlsx.full.min.js"><\/script>');
+    }
+  </script>
   <script src="js/seed.js"></script>
   <script src="js/calc.js"></script>
   <script src="js/store.js"></script>
